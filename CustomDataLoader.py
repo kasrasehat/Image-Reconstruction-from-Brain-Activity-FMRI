@@ -1,6 +1,7 @@
 from torch.utils.data import Dataset
 import bdpy
 import cv2
+import os
 
 class CustomDataLoader(Dataset):
     """
@@ -46,3 +47,33 @@ class CustomDataLoader(Dataset):
 
     def __len__(self):
         return len(self.fmri_labels)
+
+
+class Custom_real_DataLoader(Dataset):
+    """
+    Args:
+        imagenet_folder : str
+
+    Return:
+        image : np.array : (N, H, W, C)
+        labels  : np.array : (N, 1)
+    """
+    def __init__(self, coco_folder: str, transform=None):
+        super(Custom_real_DataLoader, self).__init__()
+
+        self.coco_folder = coco_folder
+        self.transform = transform
+
+
+    def __getitem__(self, item):
+        image = cv2.imread(self.coco_folder + f'/{os.listdir(self.coco_folder)[item]}')
+        label = 1
+
+        if self.transform is not None:
+            image = self.transform(image)
+
+        return image, label
+
+
+    def __len__(self):
+        return len(os.listdir(self.coco_folder))

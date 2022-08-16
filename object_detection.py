@@ -57,7 +57,7 @@ gradient = torch.autograd.grad(
         # This documentation may be useful, but it should not be necessary:
         # https://pytorch.org/docs/stable/autograd.html#torch.autograd.grad
         inputs=input_batch,
-        outputs=output[0][top5_catid[0]],
+        outputs=output[0][top5_catid[0]-1],
         # These other parameters have to do with the pytorch autograd engine works
         grad_outputs=torch.ones_like(output[0][top5_catid[0]]),
         create_graph=True,
@@ -65,13 +65,16 @@ gradient = torch.autograd.grad(
     )
 heatmap = gradient[0].squeeze(0)
 heatmap = np.array(heatmap.detach().to('cpu'))
-heatmap = np.maximum(heatmap, 0)
+#heatmap = np.maximum(heatmap, 0)
+heatmap = (heatmap + 1)/2
 heatmap /= np.max(heatmap)
 heatmap *= 255
 heatmap = np.reshape(heatmap,(heatmap.shape[1],heatmap.shape[2],3))
 
+
 import cv2
 heatmap = cv2.resize(heatmap, (1213, 1546))
+heatmap = heatmap.astype(np.uint8)
 cv2.imshow('video', heatmap)
 cv2.waitKey(5)
 
