@@ -54,7 +54,7 @@ lr = 0.001
 beta_1 = 0.5
 beta_2 = 0.999
 c_lambda = 10
-crit_repeats = 2
+crit_repeats = 3
 device = 'cuda'
 height, width = 224, 224
 trans = transforms.Compose([
@@ -142,7 +142,7 @@ def gradient_penalty(gradient):
     gradient_norm = gradient.norm(2, dim=1)
 
     # Penalize the mean squared distance of the gradient norms from 1
-    penalty = ((3 - gradient_norm) * (3 - gradient_norm)).sum()/len(gradient)
+    penalty = ((1 - gradient_norm) * (1 - gradient_norm)).sum()/len(gradient)
     return penalty
 
 def get_gen_loss(crit_fake_pred):

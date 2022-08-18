@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from transformers import BeitFeatureExtractor, BeitForImageClassification
 
 
 class Generator(nn.Module):
@@ -122,3 +123,78 @@ class Critic(nn.Module):
         '''
         crit_pred = self.crit(image)
         return crit_pred.view(len(crit_pred), -1)
+
+class Generator1(nn.Module):
+    '''
+    Generator Class
+    Values:
+        z_dim: the dimension of the noise vector, a scalar
+        im_chan: the number of channels in the images, fitted for the dataset used, a scalar
+              (MNIST is black-and-white, so 1 channel is your default)
+        hidden_dim: the inner dimension, a scalar
+        Input: (N,Cin,Hin,Win)
+        Output: (N,Cout,Hout,Wout)
+        Hout=(Hin−1)×stride[0]−2×padding[0]+dilation[0]×(kernel_size[0]−1)+output_padding[0]+1
+    '''
+    def __init__(self, z_dim=10, im_chan=3, hidden_dim=64):
+        super(Generator1, self).__init__()
+        self.z_dim = z_dim
+        # Build the neural network
+        self.gen = nn.Sequential(
+            self.make_gen_block(z_dim, hidden_dim * 8),
+            self.make_gen_block(hidden_dim * 8, hidden_dim * 8, kernel_size=4, stride=1),
+            self.make_gen_block(hidden_dim * 8, hidden_dim * 4),
+            self.make_gen_block(hidden_dim * 4, hidden_dim * 4, kernel_size=4),
+            self.make_gen_block(hidden_dim * 4, hidden_dim * 4, kernel_size=8, stride=1),
+            self.make_gen_block(hidden_dim * 4, hidden_dim * 2, kernel_size=8, stride=2),
+            self.make_gen_block(hidden_dim * 2, hidden_dim * 1, kernel_size=16, stride=1),
+            self.make_gen_block(hidden_dim * 1, hidden_dim * 1, kernel_size=8, stride=2),
+            self.make_gen_block(hidden_dim * 1, im_chan, kernel_size=37, stride=1, final_layer=True),
+        )
+        self.feature_extractor_BEIT = nn.Sequential(*list(BeitForImageClassification.from_pretrained('microsoft/beit-base-patch16-224-pt22k-ft22k').children())[0:-1])
+        self.preprocess = BeitFeatureExtractor.from_pretrained('microsoft/beit-base-patch16-224-pt22k-ft22k')
+
+
+    def make_gen_block(self, input_channels, output_channels, kernel_size=3, stride=2, final_layer=False):
+        '''
+        Function to return a sequence of operations corresponding to a generator block of DCGAN;
+        a transposed convolution, a batchnorm (except in the final layer), and an activation.
+        Parameters:
+            input_channels: how many channels the input feature representation has
+            output_channels: how many channels the output feature representation should have
+            kernel_size: the size of each convolutional filter, equivalent to (kernel_size, kernel_size)
+            stride: the stride of the convolution
+            final_layer: a boolean, true if it is the final layer and false otherwise
+                      (affects activation and batchnorm)
+            Input: (N,Cin,Hin,Win)
+            Output: (N,Cout,Hout,Wout)
+            Hout=(Hin−1)×stride[0]−2×padding[0]+dilation[0]×(kernel_size[0]−1)+output_padding[0]+1
+        '''
+        if not final_layer:
+            return nn.Sequential(
+                nn.ConvTranspose2d(input_channels, output_channels, kernel_size, stride),
+                nn.BatchNorm2d(output_channels),
+                nn.ReLU(inplace=True),
+            )
+        else:
+            return nn.Sequential(
+                nn.ConvTranspose2d(input_channels, output_channels, kernel_size, stride),
+                nn.Tanh(),
+            )
+
+    def forward(self, noise):
+        '''
+        Function for completing a forward pass of the generator: Given a noise tensor,
+        returns generated images.
+        Parameters:
+            noise: a noise tensor with dimensions (n_samples, z_dim)
+        z_dim of noise is considered as number of channels of input which each channel has size of 1*1
+        '''
+        x = noise.view(len(noise), self.z_dim, 1, 1)
+        x1 = self.gen(x)
+        x2 = self.feature_extractor_BEIT(x1)['pooler_output']
+        feature = x2 / torch.linalg.norm(x2)
+        return x1, feature
+
+
+
