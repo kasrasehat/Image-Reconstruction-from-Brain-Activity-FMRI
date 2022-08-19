@@ -85,6 +85,11 @@ gen = Generator(fmri_dim).to(device)
 gen_opt = torch.optim.Adam(gen.parameters(), lr=lr, betas=(beta_1, beta_2))
 crit = Critic().to(device)
 crit_opt = torch.optim.Adam(crit.parameters(), lr=lr, betas=(beta_1, beta_2))
+
+total_params_gen = sum(param.numel() for param in gen.parameters())
+total_params_crit = sum(param.numel() for param in crit.parameters())
+print(f'number of generator parameters is:{total_params_gen}')
+print(f'number of crit parameters is:{total_params_crit}')
 def weights_init(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
         torch.nn.init.normal_(m.weight, 0.0, 0.02)
@@ -142,7 +147,7 @@ def gradient_penalty(gradient):
     gradient_norm = gradient.norm(2, dim=1)
 
     # Penalize the mean squared distance of the gradient norms from 1
-    penalty = ((1 - gradient_norm) * (1 - gradient_norm)).sum()/len(gradient)
+    penalty = ((5 - gradient_norm) * (5 - gradient_norm)).sum()/len(gradient)
     return penalty
 
 def get_gen_loss(crit_fake_pred):
@@ -196,17 +201,20 @@ for epoch in tqdm(range(n_epochs)):
             sub_images = subject[0].float().to(device)
             sub_fmri = subject[1]
             sub_fmri = upsampler(sub_fmri.view(batch_size, 1, -1)).view(batch_size, -1)
-            sub_fmri /= torch.max(torch.max(sub_fmri),torch.abs(torch.min(sub_fmri)))
+            #sub_fmri /= torch.max(torch.max(sub_fmri),torch.abs(torch.min(sub_fmri)))
+            for p in range(sub_fmri.shape[0]):
+                sub_fmri[p, :] = (sub_fmri[p, :] - torch.mean(sub_fmri[p, :])) / torch.std(sub_fmri[p, :])
+
+            fake_noise = sub_fmri.float().to(device)
             for _ in tqdm(range(crit_repeats)):
 
                 ### Update critic ###
                 crit_opt.zero_grad()
-                fake_noise = sub_fmri.float().to(device)
                 fake = gen(fake_noise)
                 crit_fake_pred = crit(fake.detach())
                 crit_real_pred = crit(real_images)
                 epsilon = torch.rand(len(real_images), 1, 1, 1, device=device, requires_grad=True)
-                gradient = get_gradient(crit, real_images, fake.detach(), epsilon)
+                gradient = get_gradient(crit, sub_images, fake.detach(), epsilon)
                 gp = gradient_penalty(gradient)
                 crit_loss = get_crit_loss(crit_fake_pred, crit_real_pred, gp, c_lambda)
 
@@ -220,8 +228,7 @@ for epoch in tqdm(range(n_epochs)):
             critic_losses += [mean_iteration_critic_loss]
             ### Update generator ###
             gen_opt.zero_grad()
-            fake_noise_2 = sub_fmri.float().to(device)
-            fake_2 = gen(fake_noise_2)
+            fake_2 = gen(fake_noise)
             crit_fake_pred = crit(fake_2)
             #because we want to predict fake images as reals, so we expect that loss of generator as negative as possible.
             gen_loss = get_gen_loss(crit_fake_pred)

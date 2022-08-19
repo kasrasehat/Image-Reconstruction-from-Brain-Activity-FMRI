@@ -197,7 +197,8 @@ for epoch in tqdm(range(n_epochs)):
             sub_images = subject[0].float().to(device)
             sub_fmri = subject[1]
             sub_fmri = upsampler(sub_fmri.view(batch_size, 1, -1)).view(batch_size, -1)
-            sub_fmri /= torch.max(torch.max(sub_fmri), torch.abs(torch.min(sub_fmri)))
+            for p in range(sub_fmri.shape[0]):
+                sub_fmri[p, :] = (sub_fmri[p, :] - torch.mean(sub_fmri[p, :])) / torch.std(sub_fmri[p, :])
             fake_noise = sub_fmri.float().to(device)
             for _ in tqdm(range(crit_repeats)):
 
@@ -228,7 +229,7 @@ for epoch in tqdm(range(n_epochs)):
             gen_loss = get_gen_loss(crit_fake_pred)
             mse_loss = F.mse_loss(fake_2, sub_images, reduction='mean')
             comparator_loss = F.mse_loss(feature, sub_image_feature, reduction='mean')
-            tot_loss = gen_loss + mse_loss + comparator_loss
+            tot_loss = gen_loss + 20 * mse_loss + 100 * comparator_loss
             tot_loss.backward()
 
             # Update the weights
@@ -243,6 +244,7 @@ for epoch in tqdm(range(n_epochs)):
                 print(f'tot loss is {tot_loss}')
                 print(f'gen loss is {gen_loss}')
                 print(f'mse loss is {mse_loss}')
+                print(f'comparator loss is {comparator_loss}')
                 gen_mean = sum(generator_losses[-display_step:]) / display_step
                 crit_mean = sum(critic_losses[-display_step:]) / display_step
                 print(f"Epoch {epoch}, step {cur_step}: Generator loss: {gen_mean}, critic loss: {crit_mean}")

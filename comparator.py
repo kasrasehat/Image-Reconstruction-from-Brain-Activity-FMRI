@@ -6,7 +6,7 @@ import torch
 
 class CBIR():
     def __init__(self):
-        self.model = nn.Sequential(*list(BeitForImageClassification.from_pretrained('microsoft/beit-base-patch16-224-pt22k-ft22k').children())[0:-1])
+        self.model = nn.Sequential(*list(BeitForImageClassification.from_pretrained('microsoft/beit-base-patch16-224-pt22k-ft22k').children())[0:-1]).to('cuda')
         self.preprocess = BeitFeatureExtractor.from_pretrained('microsoft/beit-base-patch16-224-pt22k-ft22k')
 
     def get_feature(self, batch_of_image):
