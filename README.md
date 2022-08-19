@@ -37,3 +37,7 @@ will result in improvement in quality of outputs.
 
 # Ideas:
 1- getting histogram of image from fmri signal
+
+# Best results till now:
+trainV1 which min-max normalization and gradient penalty with the 
+parameter of 5 are used

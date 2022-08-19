@@ -1,3 +1,10 @@
 bdpy~=0.18
 opencv-python~=4.5.4.58
 torch~=1.8.2+cu111
+matplotlib~=3.4.3
+nexusformat~=0.7.6
+tqdm~=4.62.3
+torchvision~=0.9.2+cu111
+transformers~=4.21.1
+pillow~=8.4.0
+numpy~=1.21.3
