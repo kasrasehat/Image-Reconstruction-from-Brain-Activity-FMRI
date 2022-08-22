@@ -21,6 +21,8 @@ and also each loss has its own special weight which changes the affect of each l
 ## trainV3:
 It is same as trainV1 with a little changes in loss which is eliminating gradient penalty
 ## trainV4:
+It is same as trainV1 but a very simple generator in order to prevent mode collapse and also the input shape is changed from 11000 channels to single channel
+## trainV5:
 It is same as previous two version but a network is added in order to reconstruct fMRI from generated image.
 
 In addition, there is two choice for normalization. first method is min-max and second is mean_std method
@@ -37,7 +39,12 @@ will result in improvement in quality of outputs.
 
 # Ideas:
 1- getting histogram of image from fmri signal
+2- using UNet to create image from fmri and vice versa
+model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
+    in_channels=1, out_channels=3, init_features=32, pretrained=True)
+3- changing fmri data into the shape of image
+
 
 # Best results till now:
 trainV1 which min-max normalization and gradient penalty with the 
-parameter of 5 are used
+parameter of 5 and batch size of 8 are used. also there are mse and wloss.

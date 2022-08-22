@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 from tqdm.auto import tqdm
@@ -5,19 +6,19 @@ from torchvision import transforms
 from torchvision.utils import make_grid
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 import time
 from torch.optim.lr_scheduler import StepLR
-
-torch.manual_seed(0) # Set for testing purposes, please do not change!
-from Networks import Generator, Critic
+import matplotlib.pyplot as plt
+from Networks import unet, Critic
 from CustomDataLoader import CustomDataLoader, Custom_real_DataLoader
+# torch.manual_seed(0) # Set for testing purposes, please do not change!
+
 
 def show_tensor_images(image_tensor, num_images=8, size=(1, 28, 28)):
-    '''
+    """
     Function for visualizing images: Given a tensor of images, number of images, and
     size per image, plots and prints the images in an uniform grid.
-    '''
+    """
     image_tensor = (image_tensor + 1) / 2
     image_unflat = image_tensor.detach().cpu()
     image_grid = make_grid(image_unflat[:num_images], nrow=4)
@@ -38,14 +39,26 @@ def make_grad_hook():
     return grads, grad_hook
 
 
+def get_noise(n_samples, z_dim, device='cpu'):
+    """
+    Function for creating noise vectors: Given the dimensions (n_samples, z_dim)
+    creates a tensor of that shape filled with random numbers from the normal distribution.
+    Parameters:
+      n_samples: the number of samples to generate, a scalar
+      z_dim: the dimension of the noise vector, a scalar
+      device: the device type
+    """
+    return torch.randn(n_samples, z_dim, device=device)
+
+
 n_epochs = 10
 display_step = 20
-batch_size = 8
+batch_size = 16
 lr = 0.001
 beta_1 = 0.5
 beta_2 = 0.999
 c_lambda = 10
-crit_repeats = 5
+crit_repeats = 3
 device = 'cuda'
 height, width = 224, 224
 trans = transforms.Compose([
@@ -71,11 +84,12 @@ dataloader1 = DataLoader(dataset1, batch_size=batch_size, shuffle=True, drop_las
 dataloader2 = DataLoader(dataset2, batch_size=batch_size, shuffle=True, drop_last=True)
 dataloader3 = DataLoader(dataset3, batch_size=batch_size, shuffle=True, drop_last=True)
 dataloader_real = DataLoader(dataset_real, batch_size=batch_size, shuffle=True, drop_last=True)
-fmri_dim = torch.max(torch.tensor([next(iter(dataloader1))[1].shape[1], next(iter(dataloader2))[1].shape[1], next(iter(dataloader3))[1].shape[1]]))
-gen = Generator(fmri_dim).to(device)
+fmri_dim = int(np.ceil(np.sqrt(torch.max(torch.tensor([next(iter(dataloader1))[1].shape[1], next(iter(dataloader2))[1].shape[1], next(iter(dataloader3))[1].shape[1]])))))**2
+gen = unet(z_dim=fmri_dim).to(device)
 gen_opt = torch.optim.Adam(gen.parameters(), lr=lr, betas=(beta_1, beta_2))
 crit = Critic().to(device)
 crit_opt = torch.optim.Adam(crit.parameters(), lr=lr, betas=(beta_1, beta_2))
+
 total_params_gen = sum(param.numel() for param in gen.parameters())
 total_params_crit = sum(param.numel() for param in crit.parameters())
 print(f'number of generator parameters is:{total_params_gen}')
@@ -84,14 +98,67 @@ print(f'number of crit parameters is:{total_params_crit}')
 
 def weights_init(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+        torch.nn.init.normal_(m.weight, 0.0, 0.2)
     if isinstance(m, nn.BatchNorm2d):
-        torch.nn.init.normal_(m.weight, 0.0, 0.02)
-        torch.nn.init.constant_(m.bias, 0)
+        torch.nn.init.normal_(m.weight, 0.0, 0.1)
+        torch.nn.init.normal_(m.bias, 0.0, 0.1)
 
 
 gen = gen.apply(weights_init)
 crit = crit.apply(weights_init)
+
+
+def get_gradient(crit, real, fake, epsilon):
+    """
+    Return the gradient of the critic's scores with respect to mixes of real and fake images.
+    Parameters:
+        crit: the critic model
+        real: a batch of real images
+        fake: a batch of fake images
+        epsilon: a vector of the uniformly random proportions of real/fake per mixed image
+    Returns:
+        gradient: the gradient of the critic's scores, with respect to the mixed image
+    """
+    # Mix the images together
+    mixed_images = real * epsilon + fake * (1 - epsilon)
+
+    # Calculate the critic's scores on the mixed images
+    mixed_scores = crit(mixed_images)
+
+    # Take the gradient of the scores with respect to the images
+    gradient = torch.autograd.grad(
+        # Note: You need to take the gradient of outputs with respect to inputs.
+        # This documentation may be useful, but it should not be necessary:
+        # https://pytorch.org/docs/stable/autograd.html#torch.autograd.grad
+        inputs=mixed_images,
+        outputs=mixed_scores,
+        # These other parameters have to do with the pytorch autograd engine works
+        grad_outputs=torch.ones_like(mixed_scores),
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    return gradient
+
+
+def gradient_penalty(gradient):
+    """
+    Return the gradient penalty, given a gradient.
+    Given a batch of image gradients, you calculate the magnitude of each image's gradient
+    and penalize the mean quadratic distance of each magnitude to 1.
+    Parameters:
+        gradient: the gradient of the critic's scores, with respect to the mixed image
+    Returns:
+        penalty: the gradient penalty
+    """
+    # Flatten the gradients so that each row captures one image
+    gradient = gradient.view(len(gradient), -1)
+
+    # Calculate the magnitude of every row
+    gradient_norm = gradient.norm(2, dim=1)
+
+    # Penalize the mean squared distance of the gradient norms from 1
+    penalty = ((3 - gradient_norm) * (3 - gradient_norm)).sum()/len(gradient)
+    return penalty
 
 
 def get_gen_loss(crit_fake_pred):
@@ -102,12 +169,12 @@ def get_gen_loss(crit_fake_pred):
     Returns:
         gen_loss: a scalar loss value for the current batch of the generator
     """
+    gen_loss = -crit_fake_pred.mean()
 
-    loss = -crit_fake_pred.mean()
-    return loss
+    return gen_loss
 
 
-def get_crit_loss(crit_fake_pred, crit_real_pred):
+def get_crit_loss(crit_fake_pred, crit_real_pred, gp, c_lambda):
     """
     Return the loss of a critic given the critic's scores for fake and real images,
     the gradient penalty, and gradient penalty weight.
@@ -120,8 +187,8 @@ def get_crit_loss(crit_fake_pred, crit_real_pred):
         crit_loss: a scalar for the critic's loss, accounting for the relevant factors
     """
 
-    loss = -(crit_real_pred - crit_fake_pred).mean()
-    return loss
+    crit_loss = -(crit_real_pred - crit_fake_pred - c_lambda*gp).mean()
+    return crit_loss
 
 
 scheduler = StepLR(gen_opt, step_size=3, gamma=0.2)
@@ -130,7 +197,6 @@ cur_step = 0
 generator_losses = []
 critic_losses = []
 upsampler = torch.nn.Upsample(size=fmri_dim, mode='nearest')
-
 for epoch in tqdm(range(n_epochs)):
     # Dataloader returns the batches
     start = time.time()
@@ -146,10 +212,8 @@ for epoch in tqdm(range(n_epochs)):
             sub_fmri = subject[1]
             sub_fmri = upsampler(sub_fmri.view(batch_size, 1, -1)).view(batch_size, -1)
             # sub_fmri /= torch.max(torch.max(sub_fmri),torch.abs(torch.min(sub_fmri)))
-            # for p in range(sub_fmri.shape[0]):
-            #     sub_fmri[p, :] = (sub_fmri[p, :] - torch.mean(sub_fmri[p, :])) / torch.std(sub_fmri[p, :])
             for p in range(sub_fmri.shape[0]):
-                sub_fmri[p, :] /= torch.max(torch.max(sub_fmri[p, :]), torch.abs(torch.min(sub_fmri[p, :])))
+                sub_fmri[p, :] = (sub_fmri[p, :] - torch.mean(sub_fmri[p, :])) / torch.std(sub_fmri[p, :])
 
             fake_noise = sub_fmri.float().to(device)
             for _ in tqdm(range(crit_repeats)):
@@ -159,7 +223,10 @@ for epoch in tqdm(range(n_epochs)):
                 fake = gen(fake_noise)
                 crit_fake_pred = crit(fake.detach())
                 crit_real_pred = crit(real_images)
-                crit_loss = get_crit_loss(crit_fake_pred, crit_real_pred)
+                epsilon = torch.rand(len(real_images), 1, 1, 1, device=device, requires_grad=True)
+                gradient = get_gradient(crit, sub_images, fake.detach(), epsilon)
+                gp = gradient_penalty(gradient)
+                crit_loss = get_crit_loss(crit_fake_pred, crit_real_pred, gp, c_lambda)
 
                 # Keep track of the average critic loss in this batch
                 mean_iteration_critic_loss += crit_loss.item() / crit_repeats
@@ -168,9 +235,8 @@ for epoch in tqdm(range(n_epochs)):
                 # Update optimizer
                 crit_opt.step()
 
-
             critic_losses += [mean_iteration_critic_loss]
-            # Update generator ###
+            ### Update generator ###
             gen_opt.zero_grad()
             fake_2 = gen(fake_noise)
             crit_fake_pred = crit(fake_2)
@@ -218,3 +284,4 @@ for epoch in tqdm(range(n_epochs)):
     scheduler.step()
     scheduler1.step()
     print(f'time for each epoch is {end - start}')
+
