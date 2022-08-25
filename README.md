@@ -24,6 +24,9 @@ It is same as trainV1 with a little changes in loss which is eliminating gradien
 It is same as trainV1 but a very simple generator in order to prevent mode collapse and also the input shape is changed from 11000 channels to single channel
 ## trainV5:
 It is same as previous two version but a network is added in order to reconstruct fMRI from generated image.
+## trainV6:
+It is the implementation of japanese paper which uses cross entropy loss 
+
 
 In addition, there is two choice for normalization. first method is min-max and second is mean_std method
 which the second one seems lead to better results

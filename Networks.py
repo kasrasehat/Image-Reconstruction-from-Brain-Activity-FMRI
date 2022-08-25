@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from transformers import BeitFeatureExtractor, BeitForImageClassification
+import math
 
 
 class Generator(nn.Module):
@@ -262,6 +263,101 @@ class unet(nn.Module):
         return x1
 
 
+class japaness_generator(nn.Module):
+    """
+    Args:
+        - num_voxel : int
+        - noise_shape : tuple
+    Inputs:
+        - x : Tensor : (N, num_voxel)
+    Outputs:
+        - : Tensor : (N, 2)
+    """
+    def __init__(self, num_voxel, noise_shape=(256, 4, 4)):
+        super(japaness_generator, self).__init__()
+
+        self.noise_shape = noise_shape
+        self.gen_1 = nn.Sequential(
+            japaness_generator._block_FC(num_voxel, math.prod(noise_shape)),
+            japaness_generator._block_FC(math.prod(noise_shape), math.prod(noise_shape)),
+            japaness_generator._block_FC(math.prod(noise_shape), math.prod(noise_shape))
+        )
+
+        self.gen_2 = nn.Sequential(
+            japaness_generator._block_UpConv2D(noise_shape[0], noise_shape[0], 4, 2),
+            japaness_generator._block_UpConv2D(noise_shape[0], 2*noise_shape[0], 3, 1),
+            japaness_generator._block_UpConv2D(2*noise_shape[0], noise_shape[0], 4, 2),
+            japaness_generator._block_UpConv2D(noise_shape[0], noise_shape[0], 3, 1),
+            japaness_generator._block_UpConv2D(noise_shape[0], int(noise_shape[0]/2), 4, 2),
+            japaness_generator._block_UpConv2D(int(noise_shape[0]/2), int(noise_shape[0]/2), 3, 1),
+            japaness_generator._block_UpConv2D(int(noise_shape[0]/2), int(noise_shape[0]/4), 4, 2),
+            japaness_generator._block_UpConv2D(int(noise_shape[0]/4), int(noise_shape[0]/8), 4, 2),
+            japaness_generator._block_UpConv2D(int(noise_shape[0]/8), 3, 4, 2)
+        )
+
+    def forward(self, x):
+        return self.gen_2(
+            self.gen_1(x).view((-1,)+self.noise_shape)
+        )
+
+    @staticmethod
+    def _block_UpConv2D(in_channels, out_channels, kernel_size, stride):
+        return nn.Sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding=1),
+            nn.LeakyReLU(negative_slope=0.3)
+        )
+
+    @staticmethod
+    def _block_FC(in_features, out_features):
+        return nn.Sequential(
+            nn.Linear(in_features, out_features),
+            nn.LeakyReLU(negative_slope=0.3)
+        )
 
 
+class japaness_discriminator(nn.Module):
+    """
+    Args:
+        - init_features : int
+    Inputs:
+        - x : Tensor : (N, C, H, W)
+    Outputs:
+        - : Tensor : (N, 2)
+    """
+    def __init__(self, init_features=32):
+        super(japaness_discriminator, self).__init__()
+
+        self.disc_1 = nn.Sequential(
+            japaness_discriminator._block_Conv2D(3, init_features, 7, 4),
+            japaness_discriminator._block_Conv2D(init_features, 2 * init_features, 5, 1),
+            japaness_discriminator._block_Conv2D(2 * init_features, 4 * init_features, 3, 2),
+            japaness_discriminator._block_Conv2D(4 * init_features, 8 * init_features, 3, 1),
+            japaness_discriminator._block_Conv2D(8 * init_features, 8 * init_features, 3, 2),
+            nn.AvgPool2d(11, 11)
+        )
+
+        self.disc_2 = nn.Sequential(
+            japaness_discriminator._block_FC(8 * init_features, 8 * init_features),
+            nn.ReLU(),
+            japaness_discriminator._block_FC(8 * init_features, 1)
+        )
+
+    def forward(self, x):
+        return self.disc_2(
+            self.disc_1(x).flatten(start_dim=1)
+        )
+
+    @staticmethod
+    def _block_Conv2D(in_channels, out_channels, kernel_size, stride):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size, stride),
+            nn.ReLU()
+        )
+
+    @staticmethod
+    def _block_FC(in_features, out_features):
+        return nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(in_features, out_features)
+        )
 
