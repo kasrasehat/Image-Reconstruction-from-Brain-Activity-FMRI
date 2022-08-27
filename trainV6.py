@@ -142,6 +142,7 @@ for epoch in tqdm(range(n_epochs)):
             gen_opt.zero_grad()
             fake_2 = gen(fake_noise)
             disc_fake_pred = disc(fake_2)
+            fake_2 = transforms.CenterCrop((224, 224))(fake_2)
             # we want to predict fake images as reals, so we expect that loss of generator as negative as possible.
             gen_loss = criterion(disc_fake_pred, torch.ones_like(disc_fake_pred))
             mse_loss = F.mse_loss(fake_2, sub_images, reduction='mean')
@@ -162,7 +163,7 @@ for epoch in tqdm(range(n_epochs)):
                 # print(f'tot loss is {tot_loss}')
                 print(f'gen loss is {generator_losses[-1]}')
                 print(f'disc loss is {disc_losses[-1]}')
-                # print(f'mse loss is {mse_loss}')
+                print(f'mse loss is {mse_loss}')
                 gen_mean = sum(generator_losses[-display_step:]) / display_step
                 disc_mean = sum(disc_losses[-display_step:]) / display_step
                 print(f'Epoch {epoch}, step {cur_step}: Generator loss: {gen_mean}, disc loss: {disc_mean}')

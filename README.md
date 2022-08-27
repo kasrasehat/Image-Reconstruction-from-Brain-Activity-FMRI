@@ -25,7 +25,9 @@ It is same as trainV1 but a very simple generator in order to prevent mode colla
 ## trainV5:
 It is same as previous two version but a network is added in order to reconstruct fMRI from generated image.
 ## trainV6:
-It is the implementation of japanese paper which uses cross entropy loss 
+It is the implementation of japanese paper which uses cross entropy loss and mse Loss 
+## trainV7:
+It is the implementation of japanese paper which uses comparator in addition to previous losses
 
 
 In addition, there is two choice for normalization. first method is min-max and second is mean_std method

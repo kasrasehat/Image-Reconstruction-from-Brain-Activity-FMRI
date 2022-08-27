@@ -234,8 +234,8 @@ class unet(nn.Module):
             final_layer: a boolean, true if it is the final layer and false otherwise
                       (affects activation and batchnorm)
             Input: (N,Cin,Hin,Win)
-            Output: (N,Cout,Hout,Wout)
-            Hout=(Hin−1)×stride[0]−2×padding[0]+dilation[0]×(kernel_size[0]−1)+output_padding[0]+1
+            Output: (N,C-out,H-out,Wout)
+            H-out=(Hin−1)×stride[0]−2×padding[0]+dilation[0]×(kernel_size[0]−1)+output_padding[0]+1
         """
         if not final_layer:
             return nn.Sequential(
@@ -272,6 +272,7 @@ class japaness_generator(nn.Module):
         - x : Tensor : (N, num_voxel)
     Outputs:
         - : Tensor : (N, 2)
+    H-out = (Hin−1)×stride[0]−2×padding[0]+dilation[0]×(kernel_size[0]−1)+output_padding[0]+1
     """
     def __init__(self, num_voxel, noise_shape=(256, 4, 4)):
         super(japaness_generator, self).__init__()
