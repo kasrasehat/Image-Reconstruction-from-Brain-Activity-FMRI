@@ -1,4 +1,4 @@
-# Image-reconstruction-from-Brain-activity
+# Mathematical modeling of FMRI data for understanding brain functionality
 Coco dataset would be used in order to train GAN dataset. URL related to this dataset are following:
 http://images.cocodataset.org/zips/val2017.zip 
 
