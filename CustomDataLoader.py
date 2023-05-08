@@ -3,6 +3,7 @@ import bdpy
 import cv2
 import os
 
+
 class CustomDataLoader(Dataset):
     """
     Args:
@@ -15,7 +16,7 @@ class CustomDataLoader(Dataset):
         image : np.array : (N, H, W, C)
         fmri  : np.array : (N, T)
     """
-    def __init__(self, fmri_file:str, imagenet_folder:str, roi_selector:str = 'ROI_VC = 1', transform = None):
+    def __init__(self, fmri_file: str, imagenet_folder: str, roi_selector: str = 'ROI_VC = 1', transform=None):
         super(CustomDataLoader, self).__init__()
 
         self.imagenet_folder = imagenet_folder
